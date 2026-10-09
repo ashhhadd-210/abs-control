@@ -18,4 +18,4 @@ fs.copyFileSync(path.join(root, '.vercel', 'project.json'), path.join(tmp, '.ver
 const target = process.argv.includes('--preview') ? '' : '--prod';
 console.log(`Deploying from ${tmp} ${target || '(preview)'} …`);
 execSync(`vercel deploy ${target} --yes --archive=tgz`, { cwd: tmp, stdio: 'inherit', shell: true });
-fs.rmSync(tmp, { recursive: true, force: true });
+try { fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 300 }); } catch { /* Windows may still hold a handle; temp dir is harmless */ }
