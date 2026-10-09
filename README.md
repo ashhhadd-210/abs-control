@@ -70,7 +70,7 @@ A persistent hosted database (Supabase / Neon Postgres) drops in as a third stor
 
 ## Deploying
 
-**Vercel (demo):** `vercel deploy --prod` from the project root. `vercel.json` routes everything to `api/index.js`; static assets come from `public/`. Note Vercel caps request bodies at ~4.5 MB, so attachments are limited to ~3 MB (site photos are downscaled in the browser automatically).
+**Vercel (demo):** `npm run deploy` (uses `scripts/deploy.js`, which deploys from a git-free copy — Vercel Hobby blocks deployments whose git commit author email differs from the Vercel account's; alternatively set `git config user.email` to the Vercel account email and use `vercel deploy --prod`). Live demo: https://abs-control.vercel.app. `vercel.json` routes everything to `api/index.js`; static assets come from `public/`. Note Vercel caps request bodies at ~4.5 MB, so attachments are limited to ~3 MB (site photos are downscaled in the browser automatically).
 
 **Production with durable data:** a VPS (`node server.js` behind nginx/Caddy with HTTPS) or a container platform with a volume (Railway, Render, Fly.io) using the included `Dockerfile` and mounting `/data`.
 
