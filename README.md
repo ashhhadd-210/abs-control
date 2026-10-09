@@ -46,18 +46,32 @@ RAG status, both KPI tables (§8 and §17), the CEO decisions inbox and all aler
 ## Structure
 
 ```
-server.js          HTTP server, auth, RBAC, API, CSV import/export, files, admin
+server.js          Local launcher · api/index.js — Vercel entry · vercel.json — routing
 lib/schema.js      Every register and field (single source of truth), roles, default permissions, approval library, gate checklists
 lib/engine.js      Rules, computed state, slippage detection, RAG, KPIs, inbox, alerts sweep
-lib/db.js          SQLite (WAL) with write-through cache, users, sessions, audit, files, notifications
+lib/app.js         HTTP application (hosted by server.js locally, api/index.js on Vercel)
+lib/db.js          Storage selector → store-sqlite.js (durable) or store-memory.js (hosted demo)
 lib/reports.js     Printable weekly dashboard & monthly CEO report
 lib/seed.js        Demo dataset
 public/            Zero-build single-page client (app.js, app.css)
 data/              Database and uploads (created on first run; set ABS_DATA to relocate)
 ```
 
+## Storage modes
+
+`lib/db.js` selects a backend; every backend exposes the same interface, so the engine, API and UI never change.
+
+| Mode | When | Persistence |
+|---|---|---|
+| `sqlite` (default) | Local, VPS, Docker | Durable on disk (`data/`, override with `ABS_DATA`) |
+| `memory` | Vercel / hosted **demo** (chosen automatically when `VERCEL` is set, or `ABS_STORE=memory`) | In-memory working set, reseeded with the demo dataset on every cold start. Nothing is permanent; a gold banner says so. |
+
+A persistent hosted database (Supabase / Neon Postgres) drops in as a third store behind the same interface: keep the working set in memory and persist mutations in `flush()` (called before every response) — see the notes at the top of `lib/store-memory.js`.
+
 ## Deploying
 
-The app keeps its database and uploaded files on disk, so it needs a host with persistent storage: a VPS (`node server.js` behind nginx/Caddy with HTTPS), or any container platform with a volume (Railway, Render, Fly.io) using the included `Dockerfile` and mounting `/data`. Serverless platforms such as Vercel do not provide persistent disk; running there would require moving storage to a hosted database and object store.
+**Vercel (demo):** `vercel deploy --prod` from the project root. `vercel.json` routes everything to `api/index.js`; static assets come from `public/`. Note Vercel caps request bodies at ~4.5 MB, so attachments are limited to ~3 MB (site photos are downscaled in the browser automatically).
 
-Environment: `PORT` (default 4800), `ABS_DATA` (data directory).
+**Production with durable data:** a VPS (`node server.js` behind nginx/Caddy with HTTPS) or a container platform with a volume (Railway, Render, Fly.io) using the included `Dockerfile` and mounting `/data`.
+
+Environment: `PORT` (default 4800), `ABS_DATA` (data directory), `ABS_STORE` (`sqlite` | `memory`), `ABS_TZ` (default `Asia/Karachi`).

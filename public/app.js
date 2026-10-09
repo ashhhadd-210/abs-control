@@ -35,6 +35,7 @@ async function api(method, path, body) {
   const r = await fetch(path, { method, headers: { 'Content-Type': 'application/json', 'X-ABS': '1' }, body: body ? JSON.stringify(body) : undefined });
   let data = null; try { data = await r.json(); } catch { data = {}; }
   if (r.status === 401) { state.meta = null; renderLogin(); throw new Error('Signed out'); }
+  if (r.status === 413) throw Object.assign(new Error('Attachment too large for this host — keep files under 3 MB (photos are downscaled automatically).'), { status: 413 });
   if (!r.ok) { const e = new Error(data.error || r.statusText); e.code = data.code; e.status = r.status; if (data.code === 'MUST_CHANGE') passwordModal(true); throw e; }
   return data;
 }
@@ -101,6 +102,7 @@ function renderShell() {
         <button class="iconbtn" id="bell" title="Alerts">◍<span class="dot hidden" id="bell-n"></span></button>
         <div class="avatar" id="me" title="${esc(m.me.name)} — ${esc(m.roles[m.me.role].label)}">${initials(m.me.name)}</div>
       </div>
+      ${m.demo ? '<div class="demo-bar">Demo instance — data is held in memory and resets whenever the server restarts; nothing you change here is permanent.</div>' : ''}
       <div class="content" id="content"></div>
     </div></div>`;
   $('#proj').onchange = e => { state.project = e.target.value; localStorage.setItem('abs_project', state.project); state.cache.clear(); route(); };
@@ -533,8 +535,9 @@ async function recordForm(entity, rec, onSaved) {
   const form = $('#rf');
   form.querySelector('[name=project_id]')?.addEventListener('change', async e => { rec.project_id = e.target.value; closeModal(); recordForm(entity, rec, onSaved); });
   $$('[data-up]', form).forEach(inp => inp.onchange = async () => {
-    for (const file of inp.files) {
+    for (let file of inp.files) {
       if (file.size > 20 * 1024 * 1024) { toast(file.name + ' exceeds 20 MB', 'err'); continue; }
+      if (/^image\/(jpeg|png|webp)/.test(file.type) && file.size > 1.2 * 1024 * 1024) file = await shrinkImage(file);
       const data = await new Promise(ok => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.readAsDataURL(file); });
       try { const r = await api('POST', '/api/files', { name: file.name, mime: file.type, data }); const k = inp.dataset.up; const f = d.fields.find(x => x.k === k); if (f.type === 'file') uploads[k] = [r.id]; else uploads[k].push(r.id); files[r.id] = r;
         const box = inp.closest('.filebox'); box.querySelectorAll('.f').forEach(x => { if (f.type === 'file') x.remove(); }); box.insertAdjacentHTML('afterbegin', `<span class="f" data-id="${r.id}">📎 ${esc(r.name)}<button type="button" data-rm="${r.id}">✕</button></span>`); bindRm(); toast('Uploaded ' + r.name, 'ok'); } catch (e) { toast(e.message, 'err'); }
@@ -559,6 +562,15 @@ async function recordForm(entity, rec, onSaved) {
     try { const r = isNew ? await api('POST', `/api/r/${entity}`, data) : await api('PUT', `/api/r/${entity}/${rec.id}`, data); closeModal(); toast(`${r.code} saved`, 'ok'); refreshNotifs(); if (entity === 'projects') { state.meta = await get('/api/meta'); renderShell(); } onSaved?.(r); if (isNew && entity !== 'projects') go(`/r/${entity}/${r.id}`); else if (isNew) go(`/project/${r.id}`); }
     catch (e) { $('#ferr').innerHTML = `<div class="err"><b>${e.code === 'UNAUTHORIZED_WORK' ? 'Blocked by the framework' : e.code === 'BASELINE_LOCKED' ? 'Baseline is locked' : e.code === 'NO_WRITTEN_CONFIRMATION' ? 'Written confirmation required' : 'Cannot save'}:</b> ${esc(e.message)}</div>`; form.scrollTop = 0; $('#save').disabled = false; }
   };
+}
+async function shrinkImage(file, max = 1920) {
+  try {
+    const bmp = await createImageBitmap(file); const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
+    const c = document.createElement('canvas'); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+    c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+    const blob = await new Promise(ok => c.toBlob(ok, 'image/jpeg', 0.84));
+    return blob && blob.size < file.size ? new File([blob], file.name.replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' }) : file;
+  } catch { return file; }
 }
 function importDialog(entity, project, onDone) {
   const d = def(entity);
