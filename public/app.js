@@ -79,6 +79,7 @@ function renderShell() {
   app.innerHTML = `<div class="shell">
     <aside class="sidebar" id="sidebar">
       <div class="logo"><img src="/logo.png" alt="ABS Developers"><div class="sys">ABS Control</div><div class="sub">Management framework engine</div></div>
+      <div class="m-only" style="padding:10px 12px 0"><select class="proj-select" id="proj-m" style="width:100%"><option value="all">All projects</option>${m.projects.map(p => `<option value="${p.id}" ${p.id === state.project ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></div>
       <nav class="nav">
         <a href="#/dashboard" data-nav="/dashboard"><span class="ico">${ICONS.dashboard}</span>Dashboard</a>
         <a href="#/mywork" data-nav="/mywork"><span class="ico">${ICONS.mywork}</span>My work<span class="cnt" id="cnt-work"></span></a>
@@ -105,7 +106,8 @@ function renderShell() {
       ${m.demo ? '<div class="demo-bar">Demo instance — data is held in memory and resets whenever the server restarts; nothing you change here is permanent.</div>' : ''}
       <div class="content" id="content"></div>
     </div></div>`;
-  $('#proj').onchange = e => { state.project = e.target.value; localStorage.setItem('abs_project', state.project); state.cache.clear(); route(); };
+  const onProj = e => { state.project = e.target.value; localStorage.setItem('abs_project', state.project); $('#proj').value = state.project; $('#proj-m').value = state.project; state.cache.clear(); route(); };
+  $('#proj').onchange = onProj; $('#proj-m').onchange = onProj;
   $('#burger').onclick = () => { $('#sidebar').classList.toggle('open'); $('#scrim').classList.toggle('hidden'); };
   $('#scrim').onclick = () => { $('#sidebar').classList.remove('open'); $('#scrim').classList.add('hidden'); };
   $('#theme').onclick = () => { const cur = document.documentElement.dataset.theme; const next = cur === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = next; try { localStorage.setItem('abs_theme', next); } catch {} };
@@ -406,8 +408,9 @@ function cellVal(entity, f, r) {
 function table(entity, rows, cols, st) {
   const d = def(entity); const showProj = entity !== 'projects' && state.project === 'all';
   if (!rows.length) return '<div class="card"><div class="empty">No records match.</div></div>';
-  return `<div class="tbl-wrap"><table class="tbl"><thead><tr><th data-k="code" class="${st.sort === 'code' ? 'sorted' : ''}">Code</th>${showProj ? '<th data-k="project_id">Project</th>' : ''}${cols.map(f => `<th data-k="${f.k}" class="${st.sort === f.k ? 'sorted' : ''}">${esc(f.label)}</th>`).join('')}<th>Flags</th></tr></thead><tbody>
-    ${rows.map(r => `<tr class="${r._c.overdue || r._c.plan_overdue ? 'overdue' : ''}" onclick="location.hash='#/r/${entity}/${r.id}'"><td class="code">${esc(r.code)}</td>${showProj ? `<td class="small">${esc(projName(r.project_id) || '—')}</td>` : ''}${cols.map(f => `<td class="${f.k === d.title ? 'tt' : ''}">${cellVal(entity, f, r)}</td>`).join('')}<td>${flags(r)}</td></tr>`).join('')}</tbody></table></div>`;
+  const keep = new Set([d.title, d.status]); const opt = f => keep.has(f.k) ? '' : ' opt';
+  return `<div class="tbl-wrap"><table class="tbl"><thead><tr><th data-k="code" class="opt ${st.sort === 'code' ? 'sorted' : ''}">Code</th>${showProj ? '<th data-k="project_id" class="opt">Project</th>' : ''}${cols.map(f => `<th data-k="${f.k}" class="${st.sort === f.k ? 'sorted' : ''}${opt(f)}">${esc(f.label)}</th>`).join('')}<th>Flags</th></tr></thead><tbody>
+    ${rows.map(r => `<tr class="${r._c.overdue || r._c.plan_overdue ? 'overdue' : ''}" onclick="location.hash='#/r/${entity}/${r.id}'"><td class="code opt">${esc(r.code)}</td>${showProj ? `<td class="small opt">${esc(projName(r.project_id) || '—')}</td>` : ''}${cols.map(f => `<td class="${f.k === d.title ? 'tt' : ''}${opt(f)}">${cellVal(entity, f, r)}${f.k === d.title ? `<div class="code m-only">${esc(r.code)}${showProj && r.project_id ? ' · ' + esc(projName(r.project_id)) : ''}</div>` : ''}</td>`).join('')}<td>${flags(r)}</td></tr>`).join('')}</tbody></table></div>`;
 }
 function flags(r) {
   const c = r._c, out = [];
