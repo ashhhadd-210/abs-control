@@ -1,0 +1,14 @@
+{
+  "name": "abs-control",
+  "version": "1.0.0",
+  "description": "ABS Developers — Management Framework engine: statutory approvals, project coordination, governance and CEO reporting.",
+  "private": true,
+  "main": "server.js",
+  "engines": { "node": ">=22.5" },
+  "scripts": {
+    "start": "node server.js",
+    "seed": "node server.js --seed",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {}
+}
