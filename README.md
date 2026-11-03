@@ -1,77 +1,169 @@
 # ABS Control
 
-The operating engine for the **ABS Developers Management Framework** — Government Affairs, Planning Approvals & Project Coordination, plus the integrated Project Management function. Every register, control, phase gate and KPI in the framework document is implemented as live data with rules enforced by the system, and the CEO's weekly dashboard and monthly report are generated from the same data.
+ABS Control is the operating engine for a property developer's management framework: Government
+Affairs, Planning Approvals and Project Coordination, plus the project management function. It
+was built for ABS Developers, whose framework document sets out rules such as "submission is not
+authorization" and "no change to the baseline without written approval". On paper those rules
+depend on people remembering them. Here every register, control, phase gate and KPI in the
+document is live data, and the server enforces the rules.
 
-## Run
+I built it end to end: the register schema, the rules engine, the RAG and KPI calculations, the
+alert sweep, the role permissions, the printable CEO reports, the zero-build front end and two
+storage back ends. It has no npm dependencies and no build step; it runs on Node's built-in
+SQLite.
 
-Requires Node 22.5+ (uses the built-in SQLite). No dependencies, no build step.
+![Portfolio command centre](docs/screenshots/01-ceo-dashboard.png)
 
-```
-node server.js            # http://localhost:4800
-node server.js --seed     # wipe and reload the demo dataset
-```
+## What it does
 
-On Windows, double-click `start.bat`.
+**For the CEO**
+- Portfolio command centre: active projects, approvals granted, open delays, decisions
+  required and blocked unauthorised-work attempts, with a RAG row per project
+- Decisions inbox: change requests, submitted phase gates, escalated risks and rejected
+  approvals that need a CEO decision
+- Phase-gate approval: a project moves to the next phase only when the CEO approves its gate
+- Printable weekly coordination dashboard, monthly CEO report and per-project report, all
+  generated from the registers at the moment they are opened
 
-First start seeds a demo portfolio of five Lahore projects across all four lifecycle phases.
+**For the Chief Coordinator and the approvals team**
+- Statutory approvals and NOCs per authority (LDA, TEPA, WASA, LESCO, SNGPL, EPA Punjab,
+  Rescue 1122, CAA and others), from Not Started through Submitted, Observations and
+  Resubmitted to Granted, Rejected or Expired
+- Deficiency and regularisation register, government correspondence and meetings, and official
+  fees and challans
+- An approval library of 16 templates that can be applied to a new project in one click
+- A deadlines calendar of decision targets, expiries and follow-ups
 
-| Account | Role | Password |
-|---|---|---|
-| admin@abs.pk | System Administrator | admin12345 |
-| ceo@abs.pk | CEO | abs12345 |
-| fahim@abs.pk | Chief Town Planner / Chief Coordinator | abs12345 |
-| ayesha@abs.pk, bilal@abs.pk | Project Managers | abs12345 |
-| ali@abs.pk | Resident Engineer | abs12345 |
-| hamza@abs.pk | QA/QC Manager | abs12345 |
-| fatima@abs.pk · imran@abs.pk · zainab@abs.pk · sana@abs.pk · usman@abs.pk · kashif@abs.pk · mariam@abs.pk | QS · Procurement · Document Control · Studio Head · Lead Architect · Supervisor · Handover | abs12345 |
+**For project managers and site teams**
+- A Gantt per project (baseline bar, forecast or actual overlay, critical path, milestones) and
+  weekly site reports that build the S-curve
+- Delays and recovery plans, risks and issues, budget lines, contracts and packages, payment
+  applications, and change and variation control
+- Inspections and tests, non-conformances, safety records, snags, close-out items, documents,
+  transmittals, meetings and actions
+- "My work": everything assigned to the signed-in person that is still open
 
-**Before going live:** sign in as admin, create real users (temporary passwords are issued and must be changed at first sign-in), disable the demo accounts, and run `node server.js --seed` only if you want to clear the demo data (then create projects from scratch).
+**For the administrator**
+- Users and access, a role-by-register permission matrix (read, create, update, delete,
+  approve), thresholds and rules, the approval library and the audit log
 
-## What the engine enforces
+## The rules the engine enforces
+
+Each rule lives in `beforeSave` in `lib/engine.js`. A request that breaks one gets a 409 or 403
+with the framework clause in the message, and nothing is saved.
 
 | Framework clause | Rule in the system |
 |---|---|
-| §4.4 No approval is secured without written confirmation | An approval cannot be set to **Granted** without the authority's reference number, issue date and the uploaded letter. |
-| §5 Submission is not authorization | An activity linked to approvals cannot start unless each is Granted, unexpired and its conditions acknowledged by site. Attempts are blocked, logged and alerted to the CEO and Chief Coordinator. |
-| §6 Recovery plan within 3 working days | Material slippage auto-creates a Delay with a working-day deadline (weekend/holiday aware); overdue plans escalate to the CEO. |
-| §14 Phase gates | Projects advance only when the gate checklist is complete, submitted, and approved by the CEO in the system. |
-| §16 No change to scope/budget/baseline without written approval | Locked baselines (dates, budget) can only change through an Approved Change Request. Scope/baseline changes and anything above the PM's delegated limit require the CEO. |
-| §15 Variations approved before implementation | A change cannot be marked Implemented unless it was Approved first. |
-| §4.10 Lawful conduct | Every fee paid to an authority requires an official challan number and a bank receipt. |
-| §16 Decision & action log | A meeting cannot be closed while any action lacks an owner or due date. |
-| §5 Expiry / renewal | NOC and permit expiries raise alerts at 90/60/30 days and auto-expire, which re-blocks linked site work. |
+| §4.4 Written confirmation | An approval cannot be set to Granted without the authority's reference number, issue date and the uploaded letter |
+| §5 Submission is not authorization | An activity linked to approvals cannot start unless each one is Granted, unexpired and its conditions acknowledged by site. The attempt is blocked, logged and sent to the CEO and Chief Coordinator |
+| §5 Expiry | NOCs and permits raise alerts at 90, 60 and 30 days, then expire automatically, which blocks the linked site work again |
+| §6 Recovery plan | Material slippage opens a Delay with a recovery-plan deadline of 3 working days (weekend and holiday aware); an overdue plan goes to the CEO |
+| §14 Phase gates | The phase field cannot be edited; it advances only when the gate checklist is complete, submitted and approved by the CEO. Approved gates are permanent |
+| §15 Variations | A change cannot be marked Implemented unless it was Approved first, and an approved change cannot be altered |
+| §16 Baselines | Locked baseline dates and budget change only through an Approved Change Request; scope and baseline changes, and anything above the PM's delegated limit, need the CEO |
+| §16 Decision log | A meeting cannot be closed while any action lacks an owner or a due date |
+| §4.10 Lawful conduct | A fee paid to an authority needs an official challan number and a bank receipt before it can be marked Paid |
+| Payments | Certified cannot exceed verified; only a Certified application can be marked Paid |
 
-RAG status, both KPI tables (§8 and §17), the CEO decisions inbox and all alerts are computed — never typed in.
+## How the numbers are computed
 
-## Structure
+Nothing on the dashboard is typed in. `projectMetrics()` and `kpis()` in `lib/engine.js` compute
+it from the registers on every request.
+
+- **Schedule.** Each activity has a weight, a baseline and a percent complete. Planned percent is
+  interpolated from the baseline dates, earned percent is the weighted progress, and SPI is
+  earned over planned. Schedule is Green at SPI 0.95 or above, and Red below 0.85 or more than
+  30 days late.
+- **Slippage.** An unfinished activity past its forecast finish slips one day per day. A slip of
+  7 days, or 1 day on the critical path, counts as material and opens a Delay automatically.
+- **Cost.** Forecast final cost over budget: Green up to 1.00, Amber up to 1.05, Red above.
+- **Approvals, quality, safety, decisions.** Red for a rejection, an expiry or a decision more
+  than 14 days late; for a Critical NCR or an overdue Major one; for a High or Lost Time
+  incident in 30 days; or for more than 3 open CEO decisions. The project's overall RAG is the
+  worst of the six.
+- **KPIs.** Two scorecards from the framework: §8 Approvals and coordination (approval tracking,
+  submission readiness, observation closure, regularisation, SPI, delay escalation, records
+  compliance, close-out) and §17 Project management (milestone adherence, schedule variance,
+  cost performance, procurement, change control, quality closure, safety, approval readiness).
+- **Alert sweep.** At most once an hour, and after any settings change, `sweep()` expires
+  approvals, opens delays and raises deduplicated alerts for expiries, overdue decisions,
+  overdue recovery plans, actions and NCRs, authority follow-ups, packages due on site within 14
+  days, expiring warranties, submitted gates and change requests. Alerts that no longer apply
+  are resolved.
+
+**Data model.** `lib/schema.js` is the single source of truth: 23 registers, each with its
+fields, status list, title field and group, plus 14 roles, the 4 lifecycle phases with their
+gate checklists, and the default permissions. The API, forms, tables, CSV import and export,
+search and reports are all driven from it, so adding a field is a one-line change.
+
+**API.** `/api/r/:entity` (list, get, create, update, delete, bulk), `/api/export/:entity` and
+`/api/import/:entity` (CSV), `/api/portfolio`, `/api/kpis`, `/api/inbox`, `/api/mywork`,
+`/api/calendar`, `/api/scurve/:id`, `/api/search`, `/api/notifications`, `/api/files`, admin
+routes for users, permissions, settings, templates and the audit log, and `/report/:kind` for
+the printable reports.
+
+## Stack
+
+| Layer | Choice |
+|---|---|
+| Server | Node.js 22.5+, the built-in `http` module, no npm dependencies |
+| Storage | `node:sqlite` with a write-through in-memory cache; an in-memory store for the hosted demo |
+| Auth | scrypt password hashes, session cookies, HMAC-signed stateless sessions on serverless |
+| Front end | One vanilla JavaScript single-page app with a hash router and hand-written CSS, light and dark |
+| Reports | Server-rendered HTML, printed to PDF from the browser |
+| Hosting | `node server.js` on a VPS, the included `Dockerfile`, or Vercel through `api/index.js` |
+
+## Engineering
+
+- About 3,360 lines across 15 source files, with no third-party packages to audit or update
+- Every write goes through one `save()` path: type coercion and validation, permission and
+  project-scope checks, the framework rules, then an audit-log entry with the changed fields
+- One storage interface behind `lib/db.js`, so the engine, API and UI are identical on SQLite
+  and in memory
+- There are no automated tests or CI in this repository yet
+
+## Screenshots
+
+| | |
+|---|---|
+| ![Project overview](docs/screenshots/02-project-overview.png) | ![Approvals register](docs/screenshots/03-approvals-register.png) |
+| Project overview: RAG chips, approvals pipeline, gate, budget | A project's statutory approvals |
+| ![Approval detail](docs/screenshots/04-approval-detail.png) | ![Gantt](docs/screenshots/05-schedule-gantt.png) |
+| An approval with observations, linked records and audit trail | Programme Gantt with critical path and slippage |
+| ![Decisions inbox](docs/screenshots/06-decisions-inbox.png) | ![Phase gate](docs/screenshots/07-phase-gate.png) |
+| Decisions inbox | Phase-gate checklist and CEO approval |
+| ![Commercial](docs/screenshots/08-commercial.png) | ![Monthly CEO report](docs/screenshots/09-monthly-ceo-report.png) |
+| Budget, commitments and forecast | Monthly report to the CEO |
+| ![Dark mode](docs/screenshots/10-dashboard-dark.png) | ![Phone](docs/screenshots/11-dashboard-phone.png) |
+| Dark mode | Phone |
+
+All screenshots show the app running locally with synthetic data: the seed's people, project and
+vendor names were replaced with obviously fake ones ("Demo Tower 1", "PM Test One") in a copy
+outside the repository before the screenshots were taken.
+
+## Running it locally
 
 ```
-server.js          Local launcher · api/index.js — Vercel entry · vercel.json — routing
-lib/schema.js      Every register and field (single source of truth), roles, default permissions, approval library, gate checklists
-lib/engine.js      Rules, computed state, slippage detection, RAG, KPIs, inbox, alerts sweep
-lib/app.js         HTTP application (hosted by server.js locally, api/index.js on Vercel)
-lib/db.js          Storage selector → store-sqlite.js (durable) or store-memory.js (hosted demo)
-lib/reports.js     Printable weekly dashboard & monthly CEO report
-lib/seed.js        Demo dataset
-public/            Zero-build single-page client (app.js, app.css)
-data/              Database and uploads (created on first run; set ABS_DATA to relocate)
+git clone https://github.com/ashhhadd-210/abs-control.git
+cd abs-control
+node server.js            # http://localhost:4800
+node server.js --seed     # wipe the database and reload the demo dataset
 ```
 
-## Storage modes
+Node 22.5 or later is required for `node:sqlite`; there is nothing to install. On Windows,
+`start.bat` does the same. The first start creates `data/` (git-ignored) and seeds a demo
+portfolio of five projects across all four phases; the sign-in page lists the demo accounts.
+Before real use, create real users as the administrator and disable the demo accounts.
 
-`lib/db.js` selects a backend; every backend exposes the same interface, so the engine, API and UI never change.
+Settings come from environment variables; there is no `.env` file:
 
-| Mode | When | Persistence |
-|---|---|---|
-| `sqlite` (default) | Local, VPS, Docker | Durable on disk (`data/`, override with `ABS_DATA`) |
-| `memory` | Vercel / hosted **demo** (chosen automatically when `VERCEL` is set, or `ABS_STORE=memory`) | In-memory working set, reseeded with the demo dataset on every cold start. Nothing is permanent; a gold banner says so. |
+| Variable | Purpose |
+|---|---|
+| `PORT` | HTTP port, default 4800 |
+| `ABS_DATA` | Data directory for the database and uploads, default `./data` |
+| `ABS_STORE` | `sqlite` (default) or `memory` (chosen automatically on Vercel) |
+| `ABS_SECRET` | Session signing secret for the memory store; set it on any multi-instance host |
+| `ABS_TZ` | Time zone for "today", default `Asia/Karachi` |
 
-A persistent hosted database (Supabase / Neon Postgres) drops in as a third store behind the same interface: keep the working set in memory and persist mutations in `flush()` (called before every response) — see the notes at the top of `lib/store-memory.js`.
-
-## Deploying
-
-**Vercel (demo):** `npm run deploy` (uses `scripts/deploy.js`, which deploys from a git-free copy — Vercel Hobby blocks deployments whose git commit author email differs from the Vercel account's; alternatively set `git config user.email` to the Vercel account email and use `vercel deploy --prod`). Live demo: https://abs-control.vercel.app. `vercel.json` routes everything to `api/index.js`; static assets come from `public/`. Note Vercel caps request bodies at ~4.5 MB, so attachments are limited to ~3 MB (site photos are downscaled in the browser automatically).
-
-**Production with durable data:** a VPS (`node server.js` behind nginx/Caddy with HTTPS) or a container platform with a volume (Railway, Render, Fly.io) using the included `Dockerfile` and mounting `/data`.
-
-Environment: `PORT` (default 4800), `ABS_DATA` (data directory), `ABS_STORE` (`sqlite` | `memory`), `ABS_TZ` (default `Asia/Karachi`).
+`npm run deploy` publishes the in-memory demo to Vercel through `scripts/deploy.js`. For durable
+data, use a VPS or a container with a volume mounted at `/data`.
